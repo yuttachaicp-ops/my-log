@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import {
-  budgetRows, categoryTotals, changeRatio, dailySeries, monthlySeries,
-  monthSummary, weeklySeries,
+  accountBalances, budgetRows, categoryTotals, changeRatio, dailySeries,
+  monthlySeries, monthSummary, pendingRecurring, weeklySeries,
 } from '../lib/calc';
 import {
-  formatDateTH, formatDayShortTH, formatMonthShortTH, formatMonthTH, monthOf, shiftMonth,
+  formatDateTH, formatDayShortTH, formatMonthShortTH, formatMonthTH, monthOf,
+  shiftMonth, todayISO,
 } from '../lib/date';
 import { SummaryCards } from '../components/SummaryCards';
 import { IncomeExpenseChart, type SeriesPoint } from '../components/IncomeExpenseChart';
@@ -14,6 +15,9 @@ import { CategoryBreakdown } from '../components/CategoryBreakdown';
 import { TransactionTable } from '../components/TransactionTable';
 import { BudgetProgress } from '../components/BudgetProgress';
 import { SavingsGoalList } from '../components/SavingsGoal';
+import { AccountBalances } from '../components/AccountBalances';
+import { RecurringPending } from '../components/RecurringPending';
+import { MonthlyReport } from '../components/MonthlyReport';
 import type { PageKey } from './pages';
 import type { Transaction } from '../types';
 
@@ -35,10 +39,12 @@ const RANGES: { key: Range; label: string; months: number }[] = [
 type BarView = 'week' | 'month';
 
 export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
-  const { data, month, setFilter } = useStore();
+  const { data, month, setFilter, postRecurring } = useStore();
   const d = data!;
   const [range, setRange] = useState<Range>('month');
   const [barView, setBarView] = useState<BarView>('week');
+  const [reportOpen, setReportOpen] = useState(false);
+  const today = todayISO();
 
   const view = useMemo(() => {
     const opening = d.settings.openingBalance;
@@ -102,6 +108,9 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
       line, cats, rangeExpense, bars, recent,
       rangeLabel: range === 'month' ? formatMonthTH(month) : `${cfg.months} เดือนล่าสุด`,
       budgets: budgetRows(inMonth, d.categories),
+      balances: accountBalances(d.transactions, d.accounts, month),
+      pending: pendingRecurring(d.transactions, d.recurring, month),
+      inMonth,
     };
   }, [d, month, range, barView]);
 
@@ -119,6 +128,9 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
           <p>มาดูภาพรวมการเงินของคุณกัน</p>
         </div>
         <div className="welcome-actions">
+          <button className="btn btn-ghost" onClick={() => setReportOpen(true)}>
+            รายงานเดือนนี้
+          </button>
           <button className="btn btn-primary" onClick={onAdd}>＋ เพิ่มรายการ</button>
         </div>
       </section>
@@ -128,6 +140,29 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
         incomeChange={view.incomeChange}
         expenseChange={view.expenseChange}
       />
+
+      {view.pending.length > 0 && (
+        <section className="card" style={{ marginBottom: 'var(--gap)' }}>
+          <div className="card-head">
+            <div>
+              <div className="card-title">รายจ่ายประจำที่ยังไม่ได้บันทึก</div>
+              <div className="card-subtitle">
+                ของเดือน{formatMonthTH(month)} — ตรวจยอดแล้วกดบันทึกทีเดียวได้เลย
+              </div>
+            </div>
+            <div className="spacer" />
+            <button className="link-btn" onClick={() => onNavigate('budget')}>จัดการ ↗</button>
+          </div>
+          <RecurringPending
+            items={view.pending}
+            categories={d.categories}
+            accounts={d.accounts}
+            month={month}
+            today={today}
+            onPost={(ids) => postRecurring(ids, month)}
+          />
+        </section>
+      )}
 
       <section className="content-grid">
         <article className="card">
@@ -217,17 +252,17 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
         />
       </section>
 
-      <section className="bottom-grid">
+      <section className="bottom-grid" style={{ marginBottom: 'var(--gap)' }}>
         <article className="card">
           <div className="card-head">
             <div>
-              <div className="card-title">งบประมาณรายเดือน</div>
-              <div className="card-subtitle">คุมค่าใช้จ่ายแบบไม่กดดันตัวเอง</div>
+              <div className="card-title">ยอดคงเหลือแต่ละบัญชี</div>
+              <div className="card-subtitle">นับถึงสิ้นเดือน{formatMonthTH(month)}</div>
             </div>
             <div className="spacer" />
-            <button className="link-btn" onClick={() => onNavigate('budget')}>จัดการ ↗</button>
+            <button className="link-btn" onClick={() => onNavigate('settings')}>จัดการบัญชี ↗</button>
           </div>
-          <BudgetProgress rows={view.budgets} limit={4} />
+          <AccountBalances rows={view.balances} />
         </article>
 
         <article className="card">
@@ -242,6 +277,31 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
           <SavingsGoalList goals={d.goals.slice(0, 2)} />
         </article>
       </section>
+
+      <section className="card">
+        <div className="card-head">
+          <div>
+            <div className="card-title">งบประมาณรายเดือน</div>
+            <div className="card-subtitle">คุมค่าใช้จ่ายแบบไม่กดดันตัวเอง</div>
+          </div>
+          <div className="spacer" />
+          <button className="link-btn" onClick={() => onNavigate('budget')}>จัดการ ↗</button>
+        </div>
+        <BudgetProgress rows={view.budgets} />
+      </section>
+
+      {reportOpen && (
+        <MonthlyReport
+          month={month}
+          summary={view.summary}
+          categories={d.categories}
+          catTotals={categoryTotals(view.inMonth, d.categories, 'expense')}
+          budgets={view.budgets}
+          balances={view.balances}
+          transactions={[...view.inMonth].sort((a, b) => a.date.localeCompare(b.date))}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
     </>
   );
 }

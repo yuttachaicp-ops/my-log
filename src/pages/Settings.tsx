@@ -5,6 +5,11 @@ import { formatTHB, parseAmount } from '../lib/money';
 import { ConfirmDialog } from '../components/ui/Modal';
 import { useTheme, type ThemePref } from '../state/theme';
 import { checkForUpdate, isServiceWorkerActive } from '../lib/pwa';
+import { Modal } from '../components/ui/Modal';
+import { CloudPanel } from '../components/CloudPanel';
+import { accountBalances } from '../lib/calc';
+import { ACCOUNT_KIND_LABEL } from '../data/defaults';
+import type { Account, AccountKind } from '../types';
 import { formatDateTH } from '../lib/date';
 
 const THEME_OPTIONS: { key: ThemePref; label: string; icon: string; note: string }[] = [
@@ -13,8 +18,84 @@ const THEME_OPTIONS: { key: ThemePref; label: string; icon: string; note: string
   { key: 'system', label: 'ตามระบบ', icon: '🖥️', note: 'เปลี่ยนตามเครื่องของคุณ' },
 ];
 
+const KINDS: AccountKind[] = ['cash', 'bank', 'credit', 'ewallet'];
+const KIND_ICON: Record<AccountKind, string> = {
+  cash: '💵', bank: '🏦', credit: '💳', ewallet: '📱',
+};
+
+function AccountForm({
+  initial, onClose, onSave,
+}: {
+  initial: Account | null;
+  onClose: () => void;
+  onSave: (a: Account) => Promise<boolean>;
+}) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [kind, setKind] = useState<AccountKind>(initial?.kind ?? 'bank');
+  const [opening, setOpening] = useState(initial ? String(initial.openingBalance) : '0');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const v = parseAmount(opening);
+    if (!name.trim()) { setErr('กรุณาใส่ชื่อบัญชี'); return; }
+    if (v === null) { setErr('ยอดตั้งต้นต้องเป็นตัวเลข'); return; }
+    setBusy(true);
+    const ok = await onSave({
+      id: initial?.id ?? '',
+      name: name.trim(), kind,
+      icon: initial?.icon && initial.kind === kind ? initial.icon : KIND_ICON[kind],
+      color: initial?.color ?? '#4E735F',
+      openingBalance: v,
+      archived: initial?.archived,
+    });
+    setBusy(false);
+    if (ok) onClose();
+  }
+
+  return (
+    <Modal title={initial ? 'แก้ไขบัญชี' : 'เพิ่มบัญชี'} onClose={onClose}>
+      <form onSubmit={submit} noValidate>
+        <label className="field">
+          <span>ชื่อบัญชี</span>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)}
+            placeholder="เช่น กสิกร, บัตรเครดิตส่วนตัว" />
+        </label>
+        <label className="field">
+          <span>ประเภท</span>
+          <select className="input" value={kind}
+            onChange={(e) => setKind(e.target.value as AccountKind)}>
+            {KINDS.map((k) => (
+              <option key={k} value={k}>{KIND_ICON[k]} {ACCOUNT_KIND_LABEL[k]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>ยอดตั้งต้น (บาท)</span>
+          <input className="input" inputMode="decimal" value={opening}
+            onChange={(e) => setOpening(e.target.value)} />
+        </label>
+        <div className="hint-box">
+          {kind === 'credit'
+            ? 'บัตรเครดิต: ถ้ามียอดค้างอยู่แล้วให้ใส่เป็นเลขติดลบ เช่น -5000'
+            : 'ใส่ยอดเงินที่มีอยู่จริงตอนเริ่มใช้แอป ยอดคงเหลือจะได้ตรงความจริง'}
+        </div>
+        {err && <div className="field-error">{err}</div>}
+        <div className="modal-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>ยกเลิก</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>บันทึก</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function Settings() {
-  const { data, mode, setMode, setOpeningBalance, source, pushToast, reload } = useStore();
+  const {
+    data, mode, setMode, setOpeningBalance, source, pushToast, reload,
+    saveAccount, removeAccount,
+  } = useStore();
   const d = data!;
   const { pref, theme, setPref } = useTheme();
   const [opening, setOpening] = useState(String(d.settings.openingBalance));
@@ -22,6 +103,8 @@ export function Settings() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pendingImport, setPendingImport] = useState<{ text: string; count: number } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [accOpen, setAccOpen] = useState(false);
+  const [accEditing, setAccEditing] = useState<Account | null>(null);
 
   async function runUpdateCheck() {
     setChecking(true);
@@ -144,26 +227,66 @@ export function Settings() {
           </div>
         </div>
 
-        <div className="type-toggle" role="group" aria-label="เลือกแหล่งข้อมูล">
-          <button
-            type="button" className="income" aria-pressed={mode === 'real'}
-            onClick={() => setMode('real')}
-          >
-            ข้อมูลของฉัน
-          </button>
-          <button
-            type="button" className="expense" aria-pressed={mode === 'sample'}
-            onClick={() => setMode('sample')}
-          >
-            ข้อมูลตัวอย่าง
-          </button>
+        <div
+          className="type-toggle"
+          style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+          role="group"
+          aria-label="เลือกแหล่งข้อมูล"
+        >
+          <button type="button" className="income" aria-pressed={mode === 'real'}
+            onClick={() => setMode('real')}>ในเครื่องนี้</button>
+          <button type="button" className="transfer" aria-pressed={mode === 'cloud'}
+            onClick={() => setMode('cloud')}>คลาวด์</button>
+          <button type="button" className="expense" aria-pressed={mode === 'sample'}
+            onClick={() => setMode('sample')}>ตัวอย่าง</button>
         </div>
 
         <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.75 }}>
-          ตอนนี้ข้อมูลเก็บอยู่ในเครื่องนี้ (localStorage) ไม่ได้ส่งออกไปไหน
-          การเชื่อมกับ Google Sheet ของ LINE Bot เดิมยังไม่ได้เปิดใช้
+          {mode === 'cloud'
+            ? 'กำลังใช้ข้อมูลบนคลาวด์ ทุกเครื่องที่เข้าสู่ระบบด้วยบัญชีเดียวกันจะเห็นชุดเดียวกัน'
+            : 'ข้อมูลเก็บอยู่ในเครื่องนี้ (localStorage) ไม่ได้ส่งออกไปไหน'}
+          {' '}การเชื่อมกับ Google Sheet ของ LINE Bot เดิมยังไม่ได้เปิดใช้
           เพราะยังไม่ได้ตรวจ schema ของชีต
         </div>
+      </section>
+
+      <CloudPanel />
+
+      <section className="card" style={{ marginBottom: 'var(--gap)' }}>
+        <div className="card-head">
+          <div>
+            <div className="card-title">บัญชีของฉัน</div>
+            <div className="card-subtitle">
+              แยกเงินสด บัญชีธนาคาร และบัตรเครดิต เพื่อดูยอดคงเหลือแยกกันได้
+            </div>
+          </div>
+          <div className="spacer" />
+          <button className="btn btn-ghost btn-sm"
+            onClick={() => { setAccEditing(null); setAccOpen(true); }}>
+            ＋ เพิ่มบัญชี
+          </button>
+        </div>
+        {accountBalances(d.transactions, d.accounts).map((b) => {
+          const acc = d.accounts.find((a) => a.id === b.accountId)!;
+          return (
+            <div className="item" key={b.accountId}>
+              <span className="acc-ic" style={{ background: b.color + '22' }} aria-hidden="true">
+                {b.icon}
+              </span>
+              <div className="tx">
+                <div className="nm"><span className="t">{b.name}</span></div>
+                <div className="sb">
+                  {ACCOUNT_KIND_LABEL[b.kind]} · ยอดตั้งต้น {formatTHB(acc.openingBalance)}
+                </div>
+              </div>
+              <div className={`am ${b.balance < 0 ? 'amount-out' : ''}`}>{formatTHB(b.balance)}</div>
+              <button className="icon-btn" aria-label={`แก้ไข ${b.name}`}
+                onClick={() => { setAccEditing(acc); setAccOpen(true); }}>✎</button>
+              <button className="icon-btn danger" aria-label={`ลบ ${b.name}`}
+                onClick={() => removeAccount(b.accountId)}>🗑</button>
+            </div>
+          );
+        })}
       </section>
 
       <section className="card" style={{ marginBottom: 'var(--gap)' }}>
@@ -237,6 +360,14 @@ export function Settings() {
           {checking ? 'กำลังตรวจ…' : 'ตรวจหาเวอร์ชันใหม่'}
         </button>
       </section>
+
+      {accOpen && (
+        <AccountForm
+          initial={accEditing}
+          onClose={() => setAccOpen(false)}
+          onSave={saveAccount}
+        />
+      )}
 
       {pendingImport && (
         <ConfirmDialog

@@ -56,21 +56,18 @@ export default function App() {
       {modalOpen && data && (
         <TransactionModal
           categories={data.categories}
+          accounts={data.accounts}
           editing={editingTx}
           defaultDate={defaultDate}
           onClose={closeModal}
           onSubmit={async (v) => {
-            if (editingTx) {
-              return editTransaction(editingTx.id, {
-                type: v.type, name: v.name, amount: v.amount,
-                categoryId: v.categoryId, date: v.date, note: v.note,
-              });
-            }
-            return addTransaction({
+            const common = {
               type: v.type, name: v.name, amount: v.amount,
-              categoryId: v.categoryId, date: v.date, note: v.note,
-              source: 'ui',
-            });
+              categoryId: v.categoryId, accountId: v.accountId,
+              toAccountId: v.toAccountId, date: v.date, note: v.note,
+            };
+            if (editingTx) return editTransaction(editingTx.id, common);
+            return addTransaction({ ...common, source: 'ui' as const });
           }}
         />
       )}

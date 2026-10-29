@@ -8,9 +8,11 @@
  *  ตัวนี้ทำให้ข้อมูลไม่หายเมื่อ reload ตามเงื่อนไข Definition of done
  *  และเป็นที่พักข้อมูลระหว่างที่ยังไม่ได้ต่อ backend จริง */
 
-import type { Category, Dataset, SavingsGoal, Transaction } from '../types';
+import type {
+  Account, Category, Dataset, RecurringItem, SavingsGoal, Transaction,
+} from '../types';
 import { AppError, newId, type DataSource, type NewTransaction, type TxPatch } from './source';
-import { DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from './defaults';
+import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from './defaults';
 import { buildSampleDataset } from './sampleData';
 import { isValidDateISO } from '../lib/date';
 import { round2 } from '../lib/money';
@@ -21,6 +23,8 @@ function emptyDataset(): Dataset {
   return {
     transactions: [],
     categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+    accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
+    recurring: [],
     goals: [],
     settings: { ...DEFAULT_SETTINGS },
   };
@@ -30,11 +34,24 @@ function readStore(key: string): Dataset | null {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Dataset;
+    const parsed = JSON.parse(raw) as Partial<Dataset>;
     if (!parsed || !Array.isArray(parsed.transactions)) return null;
+
+    // ข้อมูลที่บันทึกไว้ก่อนมีระบบบัญชีจะไม่มี accounts/recurring
+    // เติมให้ และผูกรายการเก่าทั้งหมดไว้กับบัญชีแรก ยอดรายบัญชีจึงยังถูกต้อง
+    const accounts = parsed.accounts?.length
+      ? parsed.accounts
+      : DEFAULT_ACCOUNTS.map((a) => ({ ...a }));
+    const fallbackAccount = accounts[0]?.id;
+    const transactions = parsed.transactions.map((t) =>
+      t.accountId || t.type === 'transfer' ? t : { ...t, accountId: fallbackAccount },
+    );
+
     return {
-      transactions: parsed.transactions,
+      transactions,
       categories: parsed.categories?.length ? parsed.categories : emptyDataset().categories,
+      accounts,
+      recurring: parsed.recurring || [],
       goals: parsed.goals || [],
       settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
     };
@@ -51,10 +68,18 @@ function writeStore(key: string, data: Dataset): void {
   }
 }
 
-function validateTx(t: Pick<Transaction, 'name' | 'amount' | 'date' | 'categoryId'>): void {
+function validateTx(
+  t: Pick<Transaction, 'name' | 'amount' | 'date' | 'categoryId' | 'type'>
+    & Partial<Pick<Transaction, 'accountId' | 'toAccountId'>>,
+): void {
   if (!t.name || !t.name.trim()) throw new AppError('กรุณาใส่ชื่อรายการ');
   if (!isFinite(t.amount) || t.amount <= 0) throw new AppError('จำนวนเงินต้องมากกว่า 0');
   if (!isValidDateISO(t.date)) throw new AppError('วันที่ไม่ถูกต้อง');
+  if (t.type === 'transfer') {
+    if (!t.accountId || !t.toAccountId) throw new AppError('การโอนต้องเลือกทั้งบัญชีต้นทางและปลายทาง');
+    if (t.accountId === t.toAccountId) throw new AppError('บัญชีต้นทางกับปลายทางต้องคนละบัญชี');
+    return; // การโอนไม่ต้องมีหมวดหมู่
+  }
   if (!t.categoryId) throw new AppError('กรุณาเลือกหมวดหมู่');
 }
 
@@ -150,6 +175,68 @@ export class LocalDataSource implements DataSource {
     });
   }
 
+  async saveAccount(a: Account): Promise<Account> {
+    if (!a.name.trim()) throw new AppError('กรุณาใส่ชื่อบัญชี');
+    const saved: Account = {
+      ...a,
+      id: a.id || newId('acc'),
+      name: a.name.trim(),
+      openingBalance: round2(a.openingBalance || 0),
+    };
+    await this.mutate((d) => {
+      const i = d.accounts.findIndex((x) => x.id === saved.id);
+      if (i < 0) d.accounts.push(saved);
+      else d.accounts[i] = saved;
+    });
+    return saved;
+  }
+
+  /** บัญชีที่ยังมีรายการอ้างอยู่จะถูกซ่อนแทนการลบ ข้อมูลเดิมจึงไม่เสีย */
+  async deleteAccount(id: string): Promise<void> {
+    await this.mutate((d) => {
+      const i = d.accounts.findIndex((a) => a.id === id);
+      if (i < 0) throw new AppError('ไม่พบบัญชีนี้');
+      if (d.accounts.filter((a) => !a.archived).length <= 1) {
+        throw new AppError('ต้องเหลือบัญชีอย่างน้อยหนึ่งบัญชี');
+      }
+      const used = d.transactions.some((t) => t.accountId === id || t.toAccountId === id);
+      if (used) d.accounts[i] = { ...d.accounts[i], archived: true };
+      else d.accounts.splice(i, 1);
+    });
+  }
+
+  async saveRecurring(r: RecurringItem): Promise<RecurringItem> {
+    if (!r.name.trim()) throw new AppError('กรุณาใส่ชื่อรายการ');
+    if (!isFinite(r.amount) || r.amount <= 0) throw new AppError('จำนวนเงินต้องมากกว่า 0');
+    if (!r.categoryId) throw new AppError('กรุณาเลือกหมวดหมู่');
+    const day = Math.round(r.dueDay);
+    if (!isFinite(day) || day < 1 || day > 31) throw new AppError('วันครบกำหนดต้องอยู่ระหว่าง 1 ถึง 31');
+    const now = new Date().toISOString();
+    const saved: RecurringItem = {
+      ...r,
+      id: r.id || newId('rec'),
+      name: r.name.trim(),
+      amount: round2(r.amount),
+      dueDay: day,
+      createdAt: r.createdAt || now,
+      updatedAt: now,
+    };
+    await this.mutate((d) => {
+      const i = d.recurring.findIndex((x) => x.id === saved.id);
+      if (i < 0) d.recurring.push(saved);
+      else d.recurring[i] = saved;
+    });
+    return saved;
+  }
+
+  async deleteRecurring(id: string): Promise<void> {
+    await this.mutate((d) => {
+      const i = d.recurring.findIndex((r) => r.id === id);
+      if (i < 0) throw new AppError('ไม่พบรายการประจำนี้');
+      d.recurring.splice(i, 1);
+    });
+  }
+
   async saveGoal(g: SavingsGoal): Promise<SavingsGoal> {
     if (!g.name.trim()) throw new AppError('กรุณาใส่ชื่อเป้าหมาย');
     if (!isFinite(g.targetAmount) || g.targetAmount <= 0) {
@@ -207,17 +294,26 @@ export class LocalDataSource implements DataSource {
       throw new AppError('ไฟล์ไม่มีรายการ (transactions) ตรวจว่าเลือกไฟล์ถูกตัว');
     }
 
+    // รายการที่ไฟล์ไม่ได้ระบุบัญชี ให้ผูกกับบัญชีแรกของชุดที่จะใช้จริง
+    const incomingAccounts = incoming.accounts?.length ? incoming.accounts : null;
+    const existing0 = await this.load();
+    const defaultAccountId =
+      (incomingAccounts ? incomingAccounts[0]?.id : undefined) || existing0.accounts[0]?.id;
+
     const now = new Date().toISOString();
     const txs: Transaction[] = incoming.transactions.map((raw, i) => {
       const t = raw as Partial<Transaction>;
       const built: Transaction = {
         id: t.id || newId('tx'),
         date: String(t.date || ''),
-        type: t.type === 'income' ? 'income' : 'expense',
+        type: t.type === 'income' ? 'income' : t.type === 'transfer' ? 'transfer' : 'expense',
         name: String(t.name || '').trim(),
         categoryId: String(t.categoryId || ''),
         amount: round2(Number(t.amount)),
         note: t.note ? String(t.note) : undefined,
+        accountId: t.accountId || defaultAccountId,
+        toAccountId: t.toAccountId,
+        recurringId: t.recurringId,
         source: t.source || 'import',
         createdAt: t.createdAt || now,
         updatedAt: t.updatedAt || now,
@@ -232,7 +328,7 @@ export class LocalDataSource implements DataSource {
       return built;
     });
 
-    const current = await this.load();
+    const current = existing0;
     const cats = Array.isArray(incoming.categories) && incoming.categories.length
       ? (incoming.categories as Category[])
       : current.categories;
@@ -245,6 +341,12 @@ export class LocalDataSource implements DataSource {
               txs.filter((t) => !current.transactions.some((x) => x.id === t.id)),
             ),
       categories: mode === 'replace' ? cats : current.categories,
+      accounts:
+        mode === 'replace' && incoming.accounts?.length
+          ? (incoming.accounts as Account[])
+          : current.accounts,
+      recurring:
+        mode === 'replace' ? ((incoming.recurring as RecurringItem[]) || []) : current.recurring,
       goals: mode === 'replace' ? (incoming.goals as SavingsGoal[]) || [] : current.goals,
       settings: { ...current.settings, ...(incoming.settings || {}) },
     };

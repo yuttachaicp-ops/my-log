@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useStore } from '../state/store';
 import { Modal, ConfirmDialog } from '../components/ui/Modal';
 import { parseAmount, formatTHB } from '../lib/money';
-import type { Category, TxType } from '../types';
+import type { Category } from '../types';
+
+type CatType = 'income' | 'expense';
 
 const PALETTE = ['#4E735F', '#D87965', '#E7C77D', '#7FA8A0', '#B98FA6', '#C8A27A', '#A8ADA4'];
 
@@ -14,7 +16,7 @@ function CategoryForm({
   onSave: (c: Category) => Promise<boolean>;
 }) {
   const [name, setName] = useState(initial?.name ?? '');
-  const [type, setType] = useState<TxType>(initial?.type ?? 'expense');
+  const [type, setType] = useState<CatType>(initial?.type ?? 'expense');
   const [icon, setIcon] = useState(initial?.icon ?? '🏷️');
   const [color, setColor] = useState(initial?.color ?? PALETTE[0]);
   const [budget, setBudget] = useState(
@@ -117,7 +119,7 @@ export function Categories() {
   const [open, setOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Category | null>(null);
 
-  const groups: { title: string; type: TxType }[] = [
+  const groups: { title: string; type: CatType }[] = [
     { title: 'หมวดรายจ่าย', type: 'expense' },
     { title: 'หมวดรายรับ', type: 'income' },
   ];

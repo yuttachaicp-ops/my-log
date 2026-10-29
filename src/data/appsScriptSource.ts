@@ -13,7 +13,9 @@
  *  ห้ามใส่ key หรือ URL จริงในไฟล์นี้ ให้ผู้ใช้กรอกในหน้าตั้งค่าแล้วเก็บใน localStorage
  */
 
-import type { Category, Dataset, SavingsGoal, Transaction } from '../types';
+import type {
+  Account, Category, Dataset, RecurringItem, SavingsGoal, Transaction,
+} from '../types';
 import { AppError, type DataSource, type NewTransaction, type TxPatch } from './source';
 
 export interface AppsScriptConfig {
@@ -80,6 +82,10 @@ export class AppsScriptDataSource implements DataSource {
   async deleteTransaction(_id: string): Promise<void> { throw new AppError(NOT_READY); }
   async saveCategory(_c: Category): Promise<Category> { throw new AppError(NOT_READY); }
   async deleteCategory(_id: string): Promise<void> { throw new AppError(NOT_READY); }
+  async saveAccount(_a: Account): Promise<Account> { throw new AppError(NOT_READY); }
+  async deleteAccount(_id: string): Promise<void> { throw new AppError(NOT_READY); }
+  async saveRecurring(_r: RecurringItem): Promise<RecurringItem> { throw new AppError(NOT_READY); }
+  async deleteRecurring(_id: string): Promise<void> { throw new AppError(NOT_READY); }
   async saveGoal(_g: SavingsGoal): Promise<SavingsGoal> { throw new AppError(NOT_READY); }
   async deleteGoal(_id: string): Promise<void> { throw new AppError(NOT_READY); }
   async setOpeningBalance(_amount: number): Promise<void> { throw new AppError(NOT_READY); }
