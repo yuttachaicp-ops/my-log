@@ -1,0 +1,65 @@
+name: Deploy to GitHub Pages
+
+# ทุกครั้งที่ push ขึ้น main จะ build แล้ว deploy ให้อัตโนมัติ
+# กดรันเองจากแท็บ Actions ก็ได้ผ่าน workflow_dispatch
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# สิทธิ์ที่ job ต้องใช้ตอน deploy ขึ้น Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# ถ้า push รัวกัน ให้ยกเลิกรอบเก่าแล้วเอารอบใหม่สุดเป็นหลัก
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: ติดตั้ง dependencies
+        run: npm ci
+
+      - name: รันเทสต์
+        run: npm test
+
+      # build จะประทับรหัสใหม่ลง sw.js ให้เอง (ดู plugin ใน vite.config.ts)
+      # รหัสนี้คือสิ่งที่ทำให้ผู้ใช้เห็นแถบ "มีเวอร์ชันใหม่"
+      - name: Build
+        run: npm run build
+
+      - name: ตรวจว่า sw.js ถูกประทับรหัส build แล้ว
+        run: |
+          if grep -q "__SW_BUILD__" dist/sw.js; then
+            echo "sw.js ยังไม่ถูกประทับรหัส build — ผู้ใช้จะไม่ได้รับแจ้งว่ามีเวอร์ชันใหม่"
+            exit 1
+          fi
+          grep -n "const BUILD" dist/sw.js
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

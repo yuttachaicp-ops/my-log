@@ -1,0 +1,28 @@
+{
+  "name": "My Log — บันทึกรายรับรายจ่าย",
+  "short_name": "My Log",
+  "description": "บันทึกรายรับ รายจ่าย งบประมาณ และเป้าหมายเงินออมของคุณ",
+  "start_url": "./",
+  "scope": "./",
+  "id": "/my-log",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F5F0",
+  "theme_color": "#4E735F",
+  "lang": "th",
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "เพิ่มรายการใหม่",
+      "short_name": "เพิ่มรายการ",
+      "url": "./?action=add",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

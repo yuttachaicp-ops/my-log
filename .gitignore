@@ -1,0 +1,15 @@
+node_modules
+dist
+.vite
+*.local
+.env
+.env.*
+.DS_Store
+tsconfig.tsbuildinfo
+
+# ไฟล์ชั่วคราวและไฟล์สำรองที่ไม่ควรเข้า repo
+*.tar.gz
+vite.config.ts.timestamp-*
+
+# ไฟล์ข้อมูลส่วนตัวที่ส่งออกจากแอป ห้ามขึ้น repo สาธารณะ
+my-log-*.json

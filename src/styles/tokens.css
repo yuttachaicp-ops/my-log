@@ -1,0 +1,125 @@
+/* Design tokens — Light ตรงกับ DESIGN_SPEC.md, Dark เป็นโทนมืดแบบอบอุ่น
+ *
+ * ธีมถูกกำหนดด้วย data-theme บน <html> โดย JS เป็นคนตัดสินใจแทนค่า system
+ * ให้เหลือแค่ light กับ dark ตรงนี้จึงมีแค่สองชุด ไม่ต้องเขียน media query ซ้ำ
+ */
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f7f5f0;
+  --surface: #fffefa;
+  --surface-2: #f2f0ea;
+  --text: #242a27;
+  /* DESIGN_SPEC ระบุ #858B84 แต่ได้ contrast 3.45:1 ซึ่งต่ำกว่าเกณฑ์ WCAG AA
+     จึงเข้มขึ้นเล็กน้อยให้ได้ 4.7:1 โดยคงเฉดเทาอมเขียวเดิมไว้ */
+  --muted: #6e756d;
+
+  --sage: #4e735f;
+  --sage-tint: #e7efe8;
+  --sage-deep: #3d5c4b;
+  --coral: #d87965;
+  --coral-tint: #faeae5;
+  --coral-deep: #b1543f;
+  --yellow: #e7c77d;
+  --yellow-tint: #fbf1dc;
+  --yellow-deep: #7a5f22;
+  --yellow-border: #e8d9b4;
+
+  --border: #eceae4;
+  --input-bg: #f7f5f0;
+  --grid: #eceae4;
+
+  --overlay: rgba(36, 42, 39, 0.42);
+  --shadow-sm: 0 1px 2px rgba(36, 42, 39, 0.04);
+  --shadow: 0 6px 20px rgba(36, 42, 39, 0.06);
+  --shadow-lg: 0 18px 44px rgba(36, 42, 39, 0.14);
+
+  /* สีซีรีส์ของกราฟ ใช้ชื่อแยกจากสีแบรนด์ เผื่อปรับเฉพาะกราฟทีหลัง */
+  --c-income: #4e735f;
+  --c-expense: #d87965;
+  --c-area: rgba(78, 115, 95, 0.16);
+  --tooltip-bg: #242a27;
+  --tooltip-text: #fffefa;
+
+  /* สีตัวอักษรบนพื้นสีทึบ ต้องสลับตามธีม ไม่งั้น dark mode จะอ่านไม่ออก */
+  --on-sage: #ffffff;
+  --on-coral: #ffffff;
+  --balance-bg: #4e735f;
+  --on-balance: #ffffff;
+  --on-balance-soft: rgba(255, 255, 255, 0.78);
+
+  /* จานสีโดนัท 8 สี ไล่ให้ต่างกันทั้งเฉดและความสว่าง
+     เพื่อให้แยกออกแม้มองเป็นภาพขาวดำ */
+  --cat-1: #1f3d2b;
+  --cat-2: #4e735f;
+  --cat-3: #7fa8a0;
+  --cat-4: #d87965;
+  --cat-5: #e7c77d;
+  --cat-6: #b98fa6;
+  --cat-7: #c8a27a;
+  --cat-8: #a8ada4;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #171d1a;
+  --surface: #222a25;
+  --surface-2: #2b342e;
+  --text: #f0f2ed;
+  --muted: #b0b9b1;
+
+  --sage: #a8c7ae;
+  --sage-tint: #2a3a30;
+  --sage-deep: #c5dcc9;
+  --coral: #f09a83;
+  --coral-tint: #3a2823;
+  --coral-deep: #f6b7a5;
+  --yellow: #e7c77d;
+  --yellow-tint: #332b1b;
+  --yellow-deep: #e7c77d;
+  --yellow-border: #4a3f24;
+
+  --border: #39423b;
+  --input-bg: #252e28;
+  --grid: #39423b;
+
+  --overlay: rgba(10, 14, 12, 0.6);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.5);
+
+  --c-income: #a8c7ae;
+  --c-expense: #f09a83;
+  --c-area: rgba(168, 199, 174, 0.18);
+  --tooltip-bg: #f0f2ed;
+  --tooltip-text: #171d1a;
+
+  /* โหมดมืด: sage กับ coral กลายเป็นสีอ่อน ตัวอักษรบนพื้นจึงต้องเป็นสีเข้ม */
+  --on-sage: #152019;
+  --on-coral: #2a1510;
+  --balance-bg: #2f4a3b;
+  --on-balance: #e8f1ea;
+  --on-balance-soft: rgba(232, 241, 234, 0.76);
+
+  --cat-1: #cfe3d3;
+  --cat-2: #a8c7ae;
+  --cat-3: #7fb0a6;
+  --cat-4: #f09a83;
+  --cat-5: #e7c77d;
+  --cat-6: #cfa5bb;
+  --cat-7: #d7b58c;
+  --cat-8: #9aa49c;
+}
+
+:root {
+  --radius-card: 22px;
+  --radius-ctrl: 12px;
+  --radius-pill: 999px;
+  --sidebar-w: 248px;
+  --gap: 18px;
+  --font: 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', Arial, sans-serif;
+}
