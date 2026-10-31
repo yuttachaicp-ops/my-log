@@ -111,9 +111,9 @@ export function CloudPanel() {
               placeholder="https://xxxxxxxx.supabase.co" autoComplete="off" />
           </label>
           <label className="field">
-            <span>anon public key</span>
+            <span>Publishable key (หรือ anon key แบบเดิม)</span>
             <input className="input" value={key} onChange={(e) => setKey(e.target.value)}
-              placeholder="eyJhbGciOi..." autoComplete="off" />
+              placeholder="sb_publishable_... หรือ eyJhbGciOi..." autoComplete="off" />
           </label>
           <div className="field-row">
             <label className="field">

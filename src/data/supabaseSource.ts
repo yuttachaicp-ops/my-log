@@ -21,6 +21,7 @@ import { AppError, newId, type DataSource, type NewTransaction, type TxPatch } f
 import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from './defaults';
 import { round2 } from '../lib/money';
 import { isValidDateISO } from '../lib/date';
+import { buildImportedDataset, type ImportMode } from './portable';
 
 const CFG_KEY = 'mylog.cloud.config';
 const SESSION_KEY = 'mylog.cloud.session';
@@ -367,5 +368,20 @@ export class SupabaseDataSource implements DataSource {
     await put('transactions', d.transactions);
     await this.setOpeningBalance(d.settings.openingBalance);
     return d.transactions.length;
+  }
+
+  /** ส่งออกชุดข้อมูลบนคลาวด์เป็นไฟล์ JSON ไว้สำรอง
+   *  รูปแบบเดียวกับโหมดในเครื่อง ไฟล์จึงย้ายข้ามโหมดได้ */
+  async exportJSON(): Promise<string> {
+    return JSON.stringify(await this.load(), null, 2);
+  }
+
+  /** นำเข้าไฟล์ JSON ขึ้นคลาวด์โดยตรง ไม่ต้องอ้อมผ่านโหมดในเครื่องอีกต่อไป
+   *  ประกอบชุดใหม่ให้เสร็จและตรวจครบทุกแถวก่อน แล้วค่อยเขียนทับทีเดียว */
+  async importJSON(text: string, mode: ImportMode = 'replace'): Promise<number> {
+    const current = await this.load();
+    const { next, added } = buildImportedDataset(text, current, mode, (t) => this.validateTx(t));
+    await this.importDataset(next, true);
+    return added;
   }
 }

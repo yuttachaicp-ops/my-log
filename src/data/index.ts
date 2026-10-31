@@ -62,3 +62,4 @@ export { LocalDataSource } from './localSource';
 export { AppsScriptDataSource } from './appsScriptSource';
 export * from './supabaseSource';
 export * from './source';
+export * from './portable';

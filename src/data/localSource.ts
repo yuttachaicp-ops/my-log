@@ -12,6 +12,7 @@ import type {
   Account, Category, Dataset, RecurringItem, SavingsGoal, Transaction,
 } from '../types';
 import { AppError, newId, type DataSource, type NewTransaction, type TxPatch } from './source';
+import { buildImportedDataset, type ImportMode } from './portable';
 import { DEFAULT_ACCOUNTS, DEFAULT_CATEGORIES, DEFAULT_SETTINGS } from './defaults';
 import { buildSampleDataset } from './sampleData';
 import { isValidDateISO } from '../lib/date';
@@ -281,78 +282,11 @@ export class LocalDataSource implements DataSource {
    *
    *  ตรวจความถูกต้องทุกรายการก่อนเขียน ถ้ามีแถวไหนผิดจะไม่เขียนอะไรเลย
    *  เพื่อไม่ให้ข้อมูลเดิมหายไปแล้วได้ของใหม่ที่ไม่ครบ */
-  async importJSON(text: string, mode: 'replace' | 'merge' = 'replace'): Promise<number> {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new AppError('ไฟล์นี้ไม่ใช่ JSON ที่อ่านได้');
-    }
-
-    const incoming = parsed as Partial<Dataset>;
-    if (!incoming || !Array.isArray(incoming.transactions)) {
-      throw new AppError('ไฟล์ไม่มีรายการ (transactions) ตรวจว่าเลือกไฟล์ถูกตัว');
-    }
-
-    // รายการที่ไฟล์ไม่ได้ระบุบัญชี ให้ผูกกับบัญชีแรกของชุดที่จะใช้จริง
-    const incomingAccounts = incoming.accounts?.length ? incoming.accounts : null;
-    const existing0 = await this.load();
-    const defaultAccountId =
-      (incomingAccounts ? incomingAccounts[0]?.id : undefined) || existing0.accounts[0]?.id;
-
-    const now = new Date().toISOString();
-    const txs: Transaction[] = incoming.transactions.map((raw, i) => {
-      const t = raw as Partial<Transaction>;
-      const built: Transaction = {
-        id: t.id || newId('tx'),
-        date: String(t.date || ''),
-        type: t.type === 'income' ? 'income' : t.type === 'transfer' ? 'transfer' : 'expense',
-        name: String(t.name || '').trim(),
-        categoryId: String(t.categoryId || ''),
-        amount: round2(Number(t.amount)),
-        note: t.note ? String(t.note) : undefined,
-        accountId: t.accountId || defaultAccountId,
-        toAccountId: t.toAccountId,
-        recurringId: t.recurringId,
-        source: t.source || 'import',
-        createdAt: t.createdAt || now,
-        updatedAt: t.updatedAt || now,
-        externalId: t.externalId,
-      };
-      try {
-        validateTx(built);
-      } catch (e) {
-        const why = e instanceof Error ? e.message : 'ข้อมูลไม่ถูกต้อง';
-        throw new AppError(`รายการลำดับที่ ${i + 1} ใช้ไม่ได้: ${why}`);
-      }
-      return built;
-    });
-
-    const current = existing0;
-    const cats = Array.isArray(incoming.categories) && incoming.categories.length
-      ? (incoming.categories as Category[])
-      : current.categories;
-
-    const next: Dataset = {
-      transactions:
-        mode === 'replace'
-          ? txs
-          : current.transactions.concat(
-              txs.filter((t) => !current.transactions.some((x) => x.id === t.id)),
-            ),
-      categories: mode === 'replace' ? cats : current.categories,
-      accounts:
-        mode === 'replace' && incoming.accounts?.length
-          ? (incoming.accounts as Account[])
-          : current.accounts,
-      recurring:
-        mode === 'replace' ? ((incoming.recurring as RecurringItem[]) || []) : current.recurring,
-      goals: mode === 'replace' ? (incoming.goals as SavingsGoal[]) || [] : current.goals,
-      settings: { ...current.settings, ...(incoming.settings || {}) },
-    };
-
+  async importJSON(text: string, mode: ImportMode = 'replace'): Promise<number> {
+    const current = await this.load();
+    const { next, added } = buildImportedDataset(text, current, mode, validateTx);
     writeStore(this.key, next);
-    return txs.length;
+    return added;
   }
 
   /** ล้างข้อมูลชุดนี้ทิ้งทั้งหมด กลับไปเป็นค่าเริ่มต้น */

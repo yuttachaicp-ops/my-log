@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useStore } from '../state/store';
-import { LocalDataSource } from '../data';
+import { isPortableSource } from '../data';
 import { formatTHB, parseAmount } from '../lib/money';
 import { ConfirmDialog } from '../components/ui/Modal';
 import { useTheme, type ThemePref } from '../state/theme';
@@ -138,7 +138,12 @@ export function Settings() {
   }
 
   async function confirmImport() {
-    if (!pendingImport || !(source instanceof LocalDataSource)) return;
+    if (!pendingImport) return;
+    if (!isPortableSource(source)) {
+      pushToast('แหล่งข้อมูลนี้ยังไม่รองรับการนำเข้า', 'error');
+      setPendingImport(null);
+      return;
+    }
     setBusy(true);
     try {
       const n = await source.importJSON(pendingImport.text, 'replace');
@@ -162,7 +167,7 @@ export function Settings() {
   }
 
   async function exportJSON() {
-    if (!(source instanceof LocalDataSource)) {
+    if (!isPortableSource(source)) {
       pushToast('แหล่งข้อมูลนี้ยังไม่รองรับการส่งออก', 'error');
       return;
     }
