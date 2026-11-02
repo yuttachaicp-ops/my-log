@@ -75,8 +75,12 @@ export function CreditCards({ rows, payFrom, today, onPay }: Props) {
                   <div className="bar" aria-hidden="true">
                     <i style={{ width: `${Math.round(r.usedRatio * 100)}%` }} />
                   </div>
+                  {/* บอกวงเงินเต็มไว้ด้วย เพราะ % อย่างเดียวบอกไม่ได้ว่าเหลือเท่าไรจากเท่าไร */}
                   <span>
-                    ใช้ไป {Math.round(r.usedRatio * 100)}% · เหลือใช้ได้ {formatTHB(r.available ?? 0)}
+                    <strong>{formatTHB(r.outstanding)}</strong> จากวงเงิน{' '}
+                    <strong>{formatTHB(r.account.creditLimit ?? 0)}</strong>
+                    {' · '}ใช้ไป {Math.round(r.usedRatio * 100)}%
+                    {' · '}เหลือใช้ได้ {formatTHB(r.available ?? 0)}
                   </span>
                 </div>
               )}
