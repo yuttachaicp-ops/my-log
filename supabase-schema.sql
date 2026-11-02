@@ -17,8 +17,17 @@ create table if not exists public.accounts (
   icon             text,
   color            text,
   "openingBalance" numeric not null default 0,
-  archived         boolean default false
+  archived         boolean default false,
+  -- เฉพาะบัตรเครดิต: shared = บัตรที่ใช้ร่วมกับคนอื่น ใช้แค่แยกให้รู้ว่าเป็นบัตรไหน
+  shared           boolean default false,
+  "creditLimit"    numeric,
+  "dueDay"         int
 );
+
+-- ตารางที่สร้างไว้ก่อนมีฟีเจอร์บัตรเครดิต ให้เติมคอลัมน์เพิ่มแบบไม่กระทบข้อมูลเดิม
+alter table public.accounts add column if not exists shared boolean default false;
+alter table public.accounts add column if not exists "creditLimit" numeric;
+alter table public.accounts add column if not exists "dueDay" int;
 
 create table if not exists public.categories (
   id              text primary key,

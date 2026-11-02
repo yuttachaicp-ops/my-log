@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../state/store';
 import {
-  accountBalances, budgetRows, categoryTotals, changeRatio, dailySeries,
+  accountBalances, budgetRows, categoryTotals, changeRatio, creditCardRows, dailySeries,
   monthlySeries, monthSummary, pendingRecurring, weeklySeries,
 } from '../lib/calc';
 import {
@@ -18,6 +18,7 @@ import { SavingsGoalList } from '../components/SavingsGoal';
 import { AccountBalances } from '../components/AccountBalances';
 import { RecurringPending } from '../components/RecurringPending';
 import { MonthlyReport } from '../components/MonthlyReport';
+import { CreditCards } from '../components/CreditCards';
 import type { PageKey } from './pages';
 import type { Transaction } from '../types';
 
@@ -39,7 +40,7 @@ const RANGES: { key: Range; label: string; months: number }[] = [
 type BarView = 'week' | 'month';
 
 export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
-  const { data, month, setFilter, postRecurring } = useStore();
+  const { data, month, setFilter, postRecurring, addTransaction } = useStore();
   const d = data!;
   const [range, setRange] = useState<Range>('month');
   const [barView, setBarView] = useState<BarView>('week');
@@ -110,9 +111,27 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
       budgets: budgetRows(inMonth, d.categories),
       balances: accountBalances(d.transactions, d.accounts, month),
       pending: pendingRecurring(d.transactions, d.recurring, month),
+      cards: creditCardRows(d.transactions, d.accounts, month, today),
+      payFrom: d.accounts.filter((a) => a.kind !== 'credit' && !a.archived),
       inMonth,
     };
-  }, [d, month, range, barView]);
+  }, [d, month, range, barView, today]);
+
+  /** จ่ายบิลบัตร = โอนเงินจากบัญชีหนึ่งไปตัดยอดบัตร ไม่ใช่รายจ่ายใหม่
+   *  ตอนรูดนับเป็นรายจ่ายไปแล้ว ถ้านับตอนจ่ายอีกจะกลายเป็นนับสองรอบ */
+  async function payCard(cardId: string, fromId: string, amount: number, date: string) {
+    const card = d.accounts.find((a) => a.id === cardId);
+    return addTransaction({
+      date,
+      type: 'transfer',
+      name: `จ่ายบิล${card ? ' ' + card.name : ''}`,
+      categoryId: '',
+      amount,
+      accountId: fromId,
+      toAccountId: cardId,
+      source: 'ui',
+    });
+  }
 
   /** กดหมวดจากกราฟ แล้วเด้งไปหน้ารายการพร้อมกรองหมวดนั้นไว้ให้ */
   function pickCategory(categoryId: string) {
@@ -251,6 +270,27 @@ export function Dashboard({ onAdd, onNavigate, onEditTx }: Props) {
           emptyText="ยังไม่มีรายการในเดือนนี้"
         />
       </section>
+
+      {view.cards.length > 0 && (
+        <section className="card" style={{ marginBottom: 'var(--gap)' }}>
+          <div className="card-head">
+            <div>
+              <div className="card-title">บัตรเครดิต</div>
+              <div className="card-subtitle">
+                ยอดค้างชำระนับถึงสิ้นเดือน{formatMonthTH(month)}
+              </div>
+            </div>
+            <div className="spacer" />
+            <button className="link-btn" onClick={() => onNavigate('settings')}>จัดการบัตร ↗</button>
+          </div>
+          <CreditCards
+            rows={view.cards}
+            payFrom={view.payFrom}
+            today={today}
+            onPay={payCard}
+          />
+        </section>
+      )}
 
       <section className="bottom-grid" style={{ marginBottom: 'var(--gap)' }}>
         <article className="card">

@@ -240,6 +240,83 @@ export function recurringAlerts(
     .sort((a, b) => a.daysLeft - b.daysLeft);
 }
 
+/* ------------------------------------------------------------ บัตรเครดิต */
+
+export interface CreditCardRow {
+  account: Account;
+  /** ยอดที่ยังไม่ได้จ่าย หน่วยบาท เป็นบวกเสมอ 0 คือไม่ติดค้าง */
+  outstanding: number;
+  /** ยอดที่รูดเฉพาะเดือนที่ดูอยู่ ไม่รวมยอดยกมาจากเดือนก่อน */
+  spentThisMonth: number;
+  /** ยอดที่จ่ายคืนบัตรในเดือนนี้ (โอนเข้าบัตร) */
+  paidThisMonth: number;
+  /** วงเงินที่ยังใช้ได้ undefined เมื่อไม่ได้ตั้งวงเงินไว้ */
+  available?: number;
+  /** สัดส่วนวงเงินที่ใช้ไป 0-1 undefined เมื่อไม่ได้ตั้งวงเงิน */
+  usedRatio?: number;
+  /** วันครบกำหนดชำระของเดือนนี้ แบบ YYYY-MM-DD */
+  due?: string;
+  /** บวกคือเหลืออีกกี่วัน ลบคือเลยกำหนดมากี่วัน */
+  daysLeft?: number;
+}
+
+/** สรุปสถานะบัตรเครดิตทุกใบ ณ สิ้นเดือนที่ดูอยู่
+ *
+ *  ยอดค้างชำระคิดจากยอดคงเหลือของบัญชีที่ติดลบ เพราะการรูดบัตรคือรายจ่าย
+ *  และการจ่ายบิลคือการโอนเข้าบัตร ทั้งสองอย่างขยับยอดบัญชีอยู่แล้ว
+ *  จึงไม่ต้องมีตัวเลขชุดที่สองให้หลุดจากกัน */
+export function creditCardRows(
+  all: Transaction[], accounts: Account[], month: string, todayISO?: string,
+): CreditCardRow[] {
+  const cards = accounts.filter((a) => a.kind === 'credit' && !a.archived);
+  if (!cards.length) return [];
+
+  const balances = accountBalances(all, accounts, month);
+  const inMonth = all.filter((t) => monthOf(t.date) === month);
+  const thisMonth = todayISO ? todayISO.slice(0, 7) === month : false;
+  const today = todayISO ? Number(todayISO.slice(8, 10)) : 0;
+
+  return cards.map((a) => {
+    const bal = balances.find((b) => b.accountId === a.id)?.balance ?? 0;
+    const outstanding = round2(Math.max(0, -bal));
+
+    let spent = 0;
+    let paid = 0;
+    for (const t of inMonth) {
+      if (t.type === 'expense' && t.accountId === a.id) spent += t.amount;
+      else if (t.type === 'transfer' && t.toAccountId === a.id) paid += t.amount;
+    }
+
+    const row: CreditCardRow = {
+      account: a,
+      outstanding,
+      spentThisMonth: round2(spent),
+      paidThisMonth: round2(paid),
+    };
+
+    if (a.creditLimit && a.creditLimit > 0) {
+      row.available = round2(Math.max(0, a.creditLimit - outstanding));
+      row.usedRatio = Math.min(1, outstanding / a.creditLimit);
+    }
+    if (a.dueDay) {
+      row.due = dueDateOf(month, a.dueDay);
+      // นับวันเหลือเฉพาะตอนดูเดือนปัจจุบัน เดือนอื่นบอกไปก็ไม่มีความหมาย
+      if (thisMonth) row.daysLeft = Number(row.due.slice(8, 10)) - today;
+    }
+    return row;
+  });
+}
+
+/** บัตรที่ควรเตือน — ใกล้ครบกำหนดหรือเลยกำหนดแล้ว และยังมียอดค้าง
+ *  ไม่มียอดค้างก็ไม่ต้องเตือน เพราะไม่มีอะไรให้จ่าย */
+export function creditCardAlerts(
+  rows: CreditCardRow[], leadDays = 5,
+): CreditCardRow[] {
+  return rows
+    .filter((r) => r.outstanding > 0 && r.daysLeft !== undefined && r.daysLeft <= leadDays)
+    .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
+}
+
 export function isDuplicate(existing: Transaction[], incoming: Transaction): boolean {
   if (incoming.externalId) {
     return existing.some(

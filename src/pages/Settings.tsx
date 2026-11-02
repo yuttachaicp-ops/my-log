@@ -33,6 +33,9 @@ function AccountForm({
   const [name, setName] = useState(initial?.name ?? '');
   const [kind, setKind] = useState<AccountKind>(initial?.kind ?? 'bank');
   const [opening, setOpening] = useState(initial ? String(initial.openingBalance) : '0');
+  const [shared, setShared] = useState(initial?.shared ?? false);
+  const [limit, setLimit] = useState(initial?.creditLimit ? String(initial.creditLimit) : '');
+  const [dueDay, setDueDay] = useState(initial?.dueDay ? String(initial.dueDay) : '');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -41,6 +44,23 @@ function AccountForm({
     const v = parseAmount(opening);
     if (!name.trim()) { setErr('กรุณาใส่ชื่อบัญชี'); return; }
     if (v === null) { setErr('ยอดตั้งต้นต้องเป็นตัวเลข'); return; }
+
+    // ช่องของบัตรเครดิตว่างได้ แต่ถ้ากรอกต้องใช้ได้จริง ไม่งั้นตัวเลขหน้าแรกจะเพี้ยนเงียบ ๆ
+    let creditLimit: number | undefined;
+    let due: number | undefined;
+    if (kind === 'credit') {
+      if (limit.trim()) {
+        const n = parseAmount(limit);
+        if (n === null || n <= 0) { setErr('วงเงินต้องเป็นตัวเลขมากกว่า 0'); return; }
+        creditLimit = n;
+      }
+      if (dueDay.trim()) {
+        const n = Number(dueDay);
+        if (!Number.isFinite(n) || n < 1 || n > 31) { setErr('วันครบกำหนดต้องอยู่ระหว่าง 1-31'); return; }
+        due = Math.round(n);
+      }
+    }
+
     setBusy(true);
     const ok = await onSave({
       id: initial?.id ?? '',
@@ -49,6 +69,9 @@ function AccountForm({
       color: initial?.color ?? '#4E735F',
       openingBalance: v,
       archived: initial?.archived,
+      shared: kind === 'credit' ? shared : undefined,
+      creditLimit: kind === 'credit' ? creditLimit : undefined,
+      dueDay: kind === 'credit' ? due : undefined,
     });
     setBusy(false);
     if (ok) onClose();
@@ -76,9 +99,33 @@ function AccountForm({
           <input className="input" inputMode="decimal" value={opening}
             onChange={(e) => setOpening(e.target.value)} />
         </label>
+        {kind === 'credit' && (
+          <>
+            <div className="field-row">
+              <label className="field">
+                <span>วงเงินบัตร (ไม่ใส่ก็ได้)</span>
+                <input className="input" inputMode="decimal" value={limit}
+                  onChange={(e) => setLimit(e.target.value)} placeholder="เช่น 50000" />
+              </label>
+              <label className="field">
+                <span>วันครบกำหนดชำระ</span>
+                <input className="input" inputMode="numeric" value={dueDay}
+                  onChange={(e) => setDueDay(e.target.value)} placeholder="1-31" />
+              </label>
+            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={shared}
+                onChange={(e) => setShared(e.target.checked)} />
+              <span>
+                <strong>บัตรที่ใช้ร่วมกับคนอื่น</strong>
+                <em>แยกป้ายให้เห็นชัดว่าเป็นบัตรไหน ยอดยังนับเต็มจำนวนตามที่รูดจริง</em>
+              </span>
+            </label>
+          </>
+        )}
         <div className="hint-box">
           {kind === 'credit'
-            ? 'บัตรเครดิต: ถ้ามียอดค้างอยู่แล้วให้ใส่เป็นเลขติดลบ เช่น -5000'
+            ? 'ถ้ามียอดค้างอยู่แล้วตอนเริ่มใช้ ให้ใส่ยอดตั้งต้นเป็นเลขติดลบ เช่น -5000'
             : 'ใส่ยอดเงินที่มีอยู่จริงตอนเริ่มใช้แอป ยอดคงเหลือจะได้ตรงความจริง'}
         </div>
         {err && <div className="field-error">{err}</div>}
